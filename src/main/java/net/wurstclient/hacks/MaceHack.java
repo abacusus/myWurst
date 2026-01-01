@@ -29,7 +29,7 @@ import net.wurstclient.util.EntityUtils;
 
 @SearchTags({"trigger bot", "AutoAttack", "auto attack", "AutoClicker",
 	"auto clicker"})
-public final class Macehack extends Hack
+public final class MaceHack extends Hack
 	implements PreMotionListener, HandleInputListener
 {
 	private final SliderSetting range =
