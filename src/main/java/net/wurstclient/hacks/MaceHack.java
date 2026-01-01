@@ -74,7 +74,7 @@ public final class Macehack extends Hack
 	
 	private boolean simulatingMouseClick;
 	
-	public TriggerBotHack()
+	public MaceHack()
 	{
 		super("Auto Mace");
 		setCategory(Category.COMBAT);
