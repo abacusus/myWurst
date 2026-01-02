@@ -28,7 +28,7 @@ import net.wurstclient.settings.filterlists.EntityFilterList;
 import net.wurstclient.util.EntityUtils;
 
 @SearchTags({"trigger bot", "AutoAttack", "auto attack", "AutoClicker",
-	"auto clicker"})
+	"auto clicker", "mace","auto mace","automace"})
 public final class MaceHack extends Hack
 	implements PreMotionListener, HandleInputListener
 {
@@ -76,7 +76,7 @@ public final class MaceHack extends Hack
 	
 	public MaceHack()
 	{
-		super("Auto Mace");
+		super("Mace");
 		setCategory(Category.COMBAT);
 		
 		addSetting(range);
@@ -181,3 +181,4 @@ public final class MaceHack extends Hack
 		return entityFilters.testOne(entity);
 	}
 }
+
