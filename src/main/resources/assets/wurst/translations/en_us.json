@@ -154,6 +154,7 @@
   "description.wurst.hack.liquids": "Allows you to place blocks in liquids.",
   "description.wurst.hack.lsd": "Causes hallucinations.",
   "description.wurst.hack.macedmg": "Increases your damage when attacking with a mace.",
+  "description.wurst.hack.mace": "Auto attack with mace to the nearby entity when crosshair is pointed to it.",
   "description.wurst.hack.masstpa": "Sends a TPA request to all players.",
   "description.wurst.hack.mileycyrus": "Makes you twerk.",
   "description.wurst.hack.mobesp": "Highlights nearby mobs.",
@@ -321,3 +322,4 @@
   "gui.wurst.generic.allcaps_allowed": "ALLOWED",
   "key.wurst.zoom": "Zoom"
 }
+
