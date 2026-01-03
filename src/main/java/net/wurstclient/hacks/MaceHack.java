@@ -14,6 +14,7 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.phys.EntityHitResult;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.item.AxeItem;
 import net.wurstclient.Category;
 import net.wurstclient.SearchTags;
 import net.wurstclient.events.HandleInputListener;
@@ -53,6 +54,9 @@ public final class MaceHack extends Hack
 	private final SwingHandSetting swingHand =
 		new SwingHandSetting(this, SwingHand.CLIENT);
 	
+	private final CheckboxSetting stunSlamm = new CheckboxSetting("Stun slamm ",
+		"Toggle this to perform stunn slamms(hit player with shield).", false);
+	
 	private final CheckboxSetting attackWhileBlocking =
 		new CheckboxSetting("Attack while blocking",
 			"Attacks even while you're blocking with a shield or using"
@@ -81,12 +85,13 @@ public final class MaceHack extends Hack
 	private int pendingSlot = -1;
 	private boolean shouldAttack;
 	private int previousSlot = -1;
+	private int axeSlot = -1;
 	
 	public MaceHack()
 	{
 		super("Mace");
 		setCategory(Category.COMBAT);
-		
+		addSetting(stunSlamm);
 		addSetting(range);
 		addSetting(speed);
 		addSetting(speedRandMS);
@@ -122,6 +127,7 @@ public final class MaceHack extends Hack
 		pendingTarget = null;
 		pendingSlot = -1;
 		previousSlot = -1;
+		axeSlot = -1;
 		shouldAttack = false;
 		
 		if(simulatingMouseClick)
@@ -149,12 +155,50 @@ public final class MaceHack extends Hack
 		
 		LocalPlayer player = MC.player;
 		
-		// switch slot 
+		if(stunSlamm.isChecked())
+		{ // switch slot to axe
+			if(player.getInventory().getSelectedSlot() != axeSlot)
+				
+				player.getInventory().setSelectedSlot(axeSlot);
+			// attack with axe
+			if(simulateMouseClick.isChecked())
+			{
+				IKeyBinding.get(MC.options.keyAttack).simulatePress(true);
+				simulatingMouseClick = true;
+			}else
+			{
+				MC.gameMode.attack(player, pendingTarget);
+				swingHand.swing(InteractionHand.MAIN_HAND);
+			}
+			// switch slot to mace
+			if(player.getInventory().getSelectedSlot() != pendingSlot)
+				
+				player.getInventory().setSelectedSlot(pendingSlot);
+			// attack with mace
+			if(simulateMouseClick.isChecked())
+			{
+				IKeyBinding.get(MC.options.keyAttack).simulatePress(true);
+				simulatingMouseClick = true;
+			}else
+			{
+				MC.gameMode.attack(player, pendingTarget);
+				swingHand.swing(InteractionHand.MAIN_HAND);
+			}
+			// switch back to previous slot
+			if(previousSlot != -1
+				&& player.getInventory().getSelectedSlot() != previousSlot)
+			{
+				player.getInventory().setSelectedSlot(previousSlot);
+			}
+			
+		}else
+		
+		// switch slot
 		if(player.getInventory().getSelectedSlot() != pendingSlot)
 			
 			player.getInventory().setSelectedSlot(pendingSlot);
 		
-		WURST.getHax().autoSwordHack.setSlot(pendingTarget);
+		// attack with mace
 		
 		if(simulateMouseClick.isChecked())
 		{
@@ -166,6 +210,7 @@ public final class MaceHack extends Hack
 			swingHand.swing(InteractionHand.MAIN_HAND);
 		}
 		
+		// switch back to previous slot
 		if(previousSlot != -1
 			&& player.getInventory().getSelectedSlot() != previousSlot)
 		{
@@ -177,6 +222,7 @@ public final class MaceHack extends Hack
 		pendingSlot = -1;
 		shouldAttack = false;
 		previousSlot = -1;
+		axeSlot = -1;
 	}
 	
 	@Override
@@ -204,6 +250,9 @@ public final class MaceHack extends Hack
 		if(maceSlot == -1)
 			return;
 		
+		axeSlot = searchForAxe();
+		if(axeSlot == -1)
+			return;
 		
 		pendingTarget = target;
 		pendingSlot = maceSlot;
@@ -234,6 +283,12 @@ public final class MaceHack extends Hack
 	private boolean isMace(ItemStack stack)
 	{
 		return stack.is(Items.MACE);
+	}
+	
+	private int searchForAxe()
+	{
+		return InventoryUtils
+			.indexOf(stack -> stack.getItem() instanceof AxeItem, 9);
 	}
 	
 }
