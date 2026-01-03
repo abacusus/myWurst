@@ -12,6 +12,8 @@ import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.phys.EntityHitResult;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.wurstclient.Category;
 import net.wurstclient.SearchTags;
 import net.wurstclient.events.HandleInputListener;
@@ -26,9 +28,10 @@ import net.wurstclient.settings.SwingHandSetting;
 import net.wurstclient.settings.SwingHandSetting.SwingHand;
 import net.wurstclient.settings.filterlists.EntityFilterList;
 import net.wurstclient.util.EntityUtils;
+import net.wurstclient.util.InventoryUtils;
 
 @SearchTags({"trigger bot", "AutoAttack", "auto attack", "AutoClicker",
-	"auto clicker", "mace","auto mace","automace"})
+	"auto clicker", "mace", "auto mace", "automace"})
 public final class MaceHack extends Hack
 	implements PreMotionListener, HandleInputListener
 {
@@ -74,6 +77,10 @@ public final class MaceHack extends Hack
 	
 	private boolean simulatingMouseClick;
 	
+	private Entity pendingTarget;
+	private int pendingSlot = -1;
+	private boolean shouldAttack;
+	
 	public MaceHack()
 	{
 		super("Mace");
@@ -111,6 +118,10 @@ public final class MaceHack extends Hack
 	@Override
 	protected void onDisable()
 	{
+		pendingTarget = null;
+		pendingSlot = -1;
+		shouldAttack = false;
+		
 		if(simulatingMouseClick)
 		{
 			IKeyBinding.get(MC.options.keyAttack).simulatePress(false);
@@ -124,11 +135,40 @@ public final class MaceHack extends Hack
 	@Override
 	public void onPreMotion()
 	{
-		if(!simulatingMouseClick)
+		// release simulated click if needed
+		if(simulatingMouseClick)
+		{
+			IKeyBinding.get(MC.options.keyAttack).simulatePress(false);
+			simulatingMouseClick = false;
+		}
+		
+		if(!shouldAttack || pendingTarget == null)
 			return;
 		
-		IKeyBinding.get(MC.options.keyAttack).simulatePress(false);
-		simulatingMouseClick = false;
+		LocalPlayer player = MC.player;
+		
+		// switch slot safely
+		
+		if(player.getInventory().getSelectedSlot() != pendingSlot)
+			
+			player.getInventory().setSelectedSlot(pendingSlot);
+		
+		WURST.getHax().autoSwordHack.setSlot(pendingTarget);
+		
+		if(simulateMouseClick.isChecked())
+		{
+			IKeyBinding.get(MC.options.keyAttack).simulatePress(true);
+			simulatingMouseClick = true;
+		}else
+		{
+			MC.gameMode.attack(player, pendingTarget);
+			swingHand.swing(InteractionHand.MAIN_HAND);
+		}
+		
+		// clear state
+		pendingTarget = null;
+		pendingSlot = -1;
+		shouldAttack = false;
 	}
 	
 	@Override
@@ -138,7 +178,6 @@ public final class MaceHack extends Hack
 		if(!speed.isTimeToAttack())
 			return;
 		
-		// don't attack when a container/inventory screen is open
 		if(MC.screen instanceof AbstractContainerScreen)
 			return;
 		
@@ -146,26 +185,21 @@ public final class MaceHack extends Hack
 		if(!attackWhileBlocking.isChecked() && player.isUsingItem())
 			return;
 		
-		if(MC.hitResult == null
-			|| !(MC.hitResult instanceof EntityHitResult eResult))
+		if(!(MC.hitResult instanceof EntityHitResult eResult))
 			return;
 		
 		Entity target = eResult.getEntity();
-		if(!isCorrectEntity(target))
+		if(target == null || !isCorrectEntity(target))
 			return;
 		
-		WURST.getHax().autoSwordHack.setSlot(target);
+		int maceSlot = searchForMace();
+		if(maceSlot == -1)
+			return;
 		
-		if(simulateMouseClick.isChecked())
-		{
-			IKeyBinding.get(MC.options.keyAttack).simulatePress(true);
-			simulatingMouseClick = true;
-			
-		}else
-		{
-			MC.gameMode.attack(player, target);
-			swingHand.swing(InteractionHand.MAIN_HAND);
-		}
+		// schedule attack
+		pendingTarget = target;
+		pendingSlot = maceSlot;
+		shouldAttack = true;
 		
 		speed.resetTimer(speedRandMS.getValue());
 	}
@@ -180,5 +214,16 @@ public final class MaceHack extends Hack
 		
 		return entityFilters.testOne(entity);
 	}
+	
+	private int searchForMace()
+	{
+		return InventoryUtils.indexOf(this::isMace, 40);
+		
+	}
+	
+	private boolean isMace(ItemStack stack)
+	{
+		return stack.is(Items.MACE);
+	}
+	
 }
-
