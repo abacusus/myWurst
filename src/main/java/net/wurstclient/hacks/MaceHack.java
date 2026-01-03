@@ -80,6 +80,7 @@ public final class MaceHack extends Hack
 	private Entity pendingTarget;
 	private int pendingSlot = -1;
 	private boolean shouldAttack;
+	private int previousSlot = -1;
 	
 	public MaceHack()
 	{
@@ -120,6 +121,7 @@ public final class MaceHack extends Hack
 	{
 		pendingTarget = null;
 		pendingSlot = -1;
+		previousSlot = -1;
 		shouldAttack = false;
 		
 		if(simulatingMouseClick)
@@ -135,7 +137,7 @@ public final class MaceHack extends Hack
 	@Override
 	public void onPreMotion()
 	{
-		// release simulated click if needed
+		
 		if(simulatingMouseClick)
 		{
 			IKeyBinding.get(MC.options.keyAttack).simulatePress(false);
@@ -147,8 +149,7 @@ public final class MaceHack extends Hack
 		
 		LocalPlayer player = MC.player;
 		
-		// switch slot safely
-		
+		// switch slot 
 		if(player.getInventory().getSelectedSlot() != pendingSlot)
 			
 			player.getInventory().setSelectedSlot(pendingSlot);
@@ -165,10 +166,17 @@ public final class MaceHack extends Hack
 			swingHand.swing(InteractionHand.MAIN_HAND);
 		}
 		
+		if(previousSlot != -1
+			&& player.getInventory().getSelectedSlot() != previousSlot)
+		{
+			player.getInventory().setSelectedSlot(previousSlot);
+		}
+		
 		// clear state
 		pendingTarget = null;
 		pendingSlot = -1;
 		shouldAttack = false;
+		previousSlot = -1;
 	}
 	
 	@Override
@@ -196,9 +204,11 @@ public final class MaceHack extends Hack
 		if(maceSlot == -1)
 			return;
 		
-		// schedule attack
+		
 		pendingTarget = target;
 		pendingSlot = maceSlot;
+		if(previousSlot == -1)
+			previousSlot = player.getInventory().getSelectedSlot();
 		shouldAttack = true;
 		
 		speed.resetTimer(speedRandMS.getValue());
