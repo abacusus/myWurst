@@ -20,7 +20,6 @@ import net.wurstclient.SearchTags;
 import net.wurstclient.events.HandleInputListener;
 import net.wurstclient.events.PreMotionListener;
 import net.wurstclient.hack.Hack;
-import net.wurstclient.mixinterface.IKeyBinding;
 import net.wurstclient.settings.AttackSpeedSliderSetting;
 import net.wurstclient.settings.CheckboxSetting;
 import net.wurstclient.settings.SliderSetting;
@@ -57,35 +56,41 @@ public final class MaceHack extends Hack
 	private final CheckboxSetting stunSlamm = new CheckboxSetting("Stun slamm ",
 		"Toggle this to perform stunn slamms(hit player with shield).", false);
 	
-	private final CheckboxSetting attackWhileBlocking =
-		new CheckboxSetting("Attack while blocking",
-			"Attacks even while you're blocking with a shield or using"
-				+ " items.\n\n"
-				+ "This would not be possible in vanilla and won't work if"
-				+ " \"Simulate mouse click\" is enabled.",
-			false);
-	
-	private final CheckboxSetting simulateMouseClick = new CheckboxSetting(
-		"Simulate mouse click",
-		"Simulates an actual mouse click (or key press) when attacking. Can be"
-			+ " used to trick CPS measuring tools into thinking that you're"
-			+ " attacking manually.\n\n"
-			+ "\u00a7c\u00a7lWARNING:\u00a7r Simulating mouse clicks can lead"
-			+ " to unexpected behavior, like in-game menus clicking themselves."
-			+ " Also, the \"Swing hand\" and \"Attack while blocking\" settings"
-			+ " will not work while this option is enabled.",
+	private final CheckboxSetting attackWhileBlocking = new CheckboxSetting(
+		"Attack while blocking",
+		"Attacks even while you're blocking with a shield or using"
+			+ " items.\n\n"
+			+ "This would not be possible in vanilla and won't work if",
 		false);
 	
 	private final EntityFilterList entityFilters =
 		EntityFilterList.genericCombat();
-	
-	private boolean simulatingMouseClick;
 	
 	private Entity pendingTarget;
 	private int pendingSlot = -1;
 	private boolean shouldAttack;
 	private int previousSlot = -1;
 	private int axeSlot = -1;
+	
+	private enum State
+	{
+		NONE,
+		// stun slam states
+		SWITCH_TO_AXE,
+		HIT_AXE,
+		WAIT,
+		SWITCH_TO_MACE,
+		HIT_MACE,
+		
+		// normal states (i could also use the switch_to_mace and hit_mace cases
+		// above in normal mace hit but using these for better readability)
+		NORMAL_SWITCH,
+		NORMAL_HIT,
+		
+		RESTORE
+	}
+	
+	private State state = State.NONE;
 	
 	public MaceHack()
 	{
@@ -97,7 +102,6 @@ public final class MaceHack extends Hack
 		addSetting(speedRandMS);
 		addSetting(swingHand);
 		addSetting(attackWhileBlocking);
-		addSetting(simulateMouseClick);
 		
 		entityFilters.forEach(this::addSetting);
 	}
@@ -130,12 +134,6 @@ public final class MaceHack extends Hack
 		axeSlot = -1;
 		shouldAttack = false;
 		
-		if(simulatingMouseClick)
-		{
-			IKeyBinding.get(MC.options.keyAttack).simulatePress(false);
-			simulatingMouseClick = false;
-		}
-		
 		EVENTS.remove(PreMotionListener.class, this);
 		EVENTS.remove(HandleInputListener.class, this);
 	}
@@ -144,85 +142,110 @@ public final class MaceHack extends Hack
 	public void onPreMotion()
 	{
 		
-		if(simulatingMouseClick)
-		{
-			IKeyBinding.get(MC.options.keyAttack).simulatePress(false);
-			simulatingMouseClick = false;
-		}
-		
 		if(!shouldAttack || pendingTarget == null)
 			return;
 		
 		LocalPlayer player = MC.player;
 		
-		if(stunSlamm.isChecked())
-		{ // switch slot to axe
+		if(stunSlamm.isChecked() && state == State.NONE && pendingTarget != null
+			&& axeSlot != -1 && pendingSlot != -1)
+		{
+			previousSlot = player.getInventory().getSelectedSlot();
+			state = State.SWITCH_TO_AXE; // control transfer to switch case
+											// switch_to_axe , line -175
+		}
+		
+		if(!stunSlamm.isChecked() && state == State.NONE
+			&& pendingTarget != null && pendingSlot != -1)
+		{
+			previousSlot = player.getInventory().getSelectedSlot();
+			state = State.NORMAL_SWITCH; // control transfer to switch
+											// normal_switch , line -207
+		}
+		
+		// switch case to avoid same tick packet spamming (this performs action
+		// tick by tick to avoid anticheats, to do : tick randomization )
+		
+		if(state == State.NONE)
+			return;
+		
+		switch(state)
+		{
+			// states for stun slamm
+			case SWITCH_TO_AXE:
 			if(player.getInventory().getSelectedSlot() != axeSlot)
-				
+			{
 				player.getInventory().setSelectedSlot(axeSlot);
-			// attack with axe
-			if(simulateMouseClick.isChecked())
-			{
-				IKeyBinding.get(MC.options.keyAttack).simulatePress(true);
-				simulatingMouseClick = true;
+				state = State.HIT_AXE;
 			}else
 			{
 				MC.gameMode.attack(player, pendingTarget);
 				swingHand.swing(InteractionHand.MAIN_HAND);
-			}
-			// switch slot to mace
-			if(player.getInventory().getSelectedSlot() != pendingSlot)
 				
-				player.getInventory().setSelectedSlot(pendingSlot);
-			// attack with mace
-			if(simulateMouseClick.isChecked())
-			{
-				IKeyBinding.get(MC.options.keyAttack).simulatePress(true);
-				simulatingMouseClick = true;
-			}else
-			{
-				MC.gameMode.attack(player, pendingTarget);
-				swingHand.swing(InteractionHand.MAIN_HAND);
+				state = State.SWITCH_TO_MACE;// ignoring wait
 			}
-			// switch back to previous slot
-			if(previousSlot != -1
-				&& player.getInventory().getSelectedSlot() != previousSlot)
-			{
-				player.getInventory().setSelectedSlot(previousSlot);
-			}
+			break;
 			
-		}else
-		
-		// switch slot
-		if(player.getInventory().getSelectedSlot() != pendingSlot)
-			
-			player.getInventory().setSelectedSlot(pendingSlot);
-		
-		// attack with mace
-		
-		if(simulateMouseClick.isChecked())
-		{
-			IKeyBinding.get(MC.options.keyAttack).simulatePress(true);
-			simulatingMouseClick = true;
-		}else
-		{
+			case HIT_AXE:
 			MC.gameMode.attack(player, pendingTarget);
 			swingHand.swing(InteractionHand.MAIN_HAND);
+			
+			state = State.SWITCH_TO_MACE;// ignoring wait
+			break;
+			
+			case WAIT:
+			if(speed.isTimeToAttack())
+				state = State.SWITCH_TO_MACE;
+			break;
+			
+			case SWITCH_TO_MACE:
+			player.getInventory().setSelectedSlot(pendingSlot);
+			state = State.HIT_MACE;
+			break;
+			
+			case HIT_MACE:
+			MC.gameMode.attack(player, pendingTarget);
+			swingHand.swing(InteractionHand.MAIN_HAND);
+			
+			state = State.RESTORE;// line 218
+			break;
+			
+			// states for normal mace hit
+			
+			case NORMAL_SWITCH:
+			if(player.getInventory().getSelectedSlot() != pendingSlot)
+			{
+				player.getInventory().setSelectedSlot(pendingSlot);
+				state = State.NORMAL_HIT;
+			}else
+			{
+				MC.gameMode.attack(player, pendingTarget);
+				swingHand.swing(InteractionHand.MAIN_HAND);
+				state = State.RESTORE;// line 221
+				
+			}
+			break;
+			
+			case NORMAL_HIT:
+			MC.gameMode.attack(player, pendingTarget);
+			swingHand.swing(InteractionHand.MAIN_HAND);
+			state = State.RESTORE;// line 221
+			break;
+			
+			case RESTORE:
+			if(previousSlot != -1)
+				player.getInventory().setSelectedSlot(previousSlot);
+			// clearing state
+			state = State.NONE;
+			
+			pendingTarget = null;
+			pendingSlot = -1;
+			shouldAttack = false;
+			previousSlot = -1;
+			axeSlot = -1;
+			break;
+			
 		}
-		
-		// switch back to previous slot
-		if(previousSlot != -1
-			&& player.getInventory().getSelectedSlot() != previousSlot)
-		{
-			player.getInventory().setSelectedSlot(previousSlot);
-		}
-		
-		// clear state
-		pendingTarget = null;
-		pendingSlot = -1;
-		shouldAttack = false;
-		previousSlot = -1;
-		axeSlot = -1;
 	}
 	
 	@Override
