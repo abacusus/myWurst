@@ -12,8 +12,6 @@ import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.phys.EntityHitResult;
-import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.Items;
 import net.wurstclient.Category;
 import net.wurstclient.SearchTags;
 import net.wurstclient.events.HandleInputListener;
@@ -28,11 +26,9 @@ import net.wurstclient.settings.SwingHandSetting;
 import net.wurstclient.settings.SwingHandSetting.SwingHand;
 import net.wurstclient.settings.filterlists.EntityFilterList;
 import net.wurstclient.util.EntityUtils;
-import net.wurstclient.util.InventoryUtils;
 
-@SearchTags({"trigger bot", "AutoAttack", "auto attack", "AutoClicker",
-	"auto clicker", "mace", "auto mace", "automace"})
-public final class MaceHack extends Hack
+@SearchTags({"axe", "axe crit", "critical", "fall hit"})
+public final class AxeHack extends Hack
 	implements PreMotionListener, HandleInputListener
 {
 	private final SliderSetting range =
@@ -55,41 +51,21 @@ public final class MaceHack extends Hack
 	
 	private final CheckboxSetting attackWhileBlocking =
 		new CheckboxSetting("Attack while blocking",
-			"Attacks even while you're blocking with a shield or using"
-				+ " items.\n\n"
-				+ "This would not be possible in vanilla and won't work if"
-				+ " \"Simulate mouse click\" is enabled.",
+			"Attacks even while you're blocking with a shield or using items.",
 			false);
 	
-	private final CheckboxSetting simulateMouseClick = new CheckboxSetting(
-		"Simulate mouse click",
-		"Simulates an actual mouse click (or key press) when attacking. Can be"
-			+ " used to trick CPS measuring tools into thinking that you're"
-			+ " attacking manually.\n\n"
-			+ "\u00a7c\u00a7lWARNING:\u00a7r Simulating mouse clicks can lead"
-			+ " to unexpected behavior, like in-game menus clicking themselves."
-			+ " Also, the \"Swing hand\" and \"Attack while blocking\" settings"
-			+ " will not work while this option is enabled.",
-		false);
-	
-	private final CheckboxSetting breachSwap =
-		new CheckboxSetting("Breach swapping",
-			"Uses the second mace in your inventory instead of the first one.",
-			false);
+	private final CheckboxSetting simulateMouseClick =
+		new CheckboxSetting("Simulate mouse click",
+			"Simulates an actual mouse click when attacking.", false);
 	
 	private final EntityFilterList entityFilters =
 		EntityFilterList.genericCombat();
 	
 	private boolean simulatingMouseClick;
 	
-	private Entity pendingTarget;
-	private int pendingSlot = -1;
-	private boolean shouldAttack;
-	private int previousSlot = -1;
-	
-	public MaceHack()
+	public AxeHack()
 	{
-		super("Mace");
+		super("Axe");
 		setCategory(Category.COMBAT);
 		
 		addSetting(range);
@@ -98,7 +74,6 @@ public final class MaceHack extends Hack
 		addSetting(swingHand);
 		addSetting(attackWhileBlocking);
 		addSetting(simulateMouseClick);
-		addSetting(breachSwap);
 		
 		entityFilters.forEach(this::addSetting);
 	}
@@ -106,7 +81,6 @@ public final class MaceHack extends Hack
 	@Override
 	protected void onEnable()
 	{
-		WURST.getHax().triggerBotHack.setEnabled(false);
 		WURST.getHax().clickAuraHack.setEnabled(false);
 		WURST.getHax().crystalAuraHack.setEnabled(false);
 		WURST.getHax().fightBotHack.setEnabled(false);
@@ -124,11 +98,6 @@ public final class MaceHack extends Hack
 	@Override
 	protected void onDisable()
 	{
-		pendingTarget = null;
-		pendingSlot = -1;
-		previousSlot = -1;
-		shouldAttack = false;
-		
 		if(simulatingMouseClick)
 		{
 			IKeyBinding.get(MC.options.keyAttack).simulatePress(false);
@@ -142,42 +111,11 @@ public final class MaceHack extends Hack
 	@Override
 	public void onPreMotion()
 	{
-		if(simulatingMouseClick)
-		{
-			IKeyBinding.get(MC.options.keyAttack).simulatePress(false);
-			simulatingMouseClick = false;
-		}
-		
-		if(!shouldAttack || pendingTarget == null)
+		if(!simulatingMouseClick)
 			return;
 		
-		LocalPlayer player = MC.player;
-		
-		if(player.getInventory().getSelectedSlot() != pendingSlot)
-			player.getInventory().setSelectedSlot(pendingSlot);
-		
-		WURST.getHax().autoSwordHack.setSlot(pendingTarget);
-		
-		if(simulateMouseClick.isChecked())
-		{
-			IKeyBinding.get(MC.options.keyAttack).simulatePress(true);
-			simulatingMouseClick = true;
-		}else
-		{
-			MC.gameMode.attack(player, pendingTarget);
-			swingHand.swing(InteractionHand.MAIN_HAND);
-		}
-		
-		if(previousSlot != -1
-			&& player.getInventory().getSelectedSlot() != previousSlot)
-		{
-			player.getInventory().setSelectedSlot(previousSlot);
-		}
-		
-		pendingTarget = null;
-		pendingSlot = -1;
-		shouldAttack = false;
-		previousSlot = -1;
+		IKeyBinding.get(MC.options.keyAttack).simulatePress(false);
+		simulatingMouseClick = false;
 	}
 	
 	@Override
@@ -191,6 +129,11 @@ public final class MaceHack extends Hack
 			return;
 		
 		LocalPlayer player = MC.player;
+		
+		// 🔽 ONLY ATTACK WHILE FALLING 🔽
+		if(player.onGround() || player.getDeltaMovement().y >= 0)
+			return;
+		
 		if(!attackWhileBlocking.isChecked() && player.isUsingItem())
 			return;
 		
@@ -198,20 +141,20 @@ public final class MaceHack extends Hack
 			return;
 		
 		Entity target = eResult.getEntity();
-		if(target == null || !isCorrectEntity(target))
+		if(!isCorrectEntity(target))
 			return;
 		
-		int maceSlot = searchForMace();
-		if(maceSlot == -1)
-			return;
+		WURST.getHax().autoSwordHack.setSlot(target);
 		
-		pendingTarget = target;
-		pendingSlot = maceSlot;
-		
-		if(previousSlot == -1)
-			previousSlot = player.getInventory().getSelectedSlot();
-		
-		shouldAttack = true;
+		if(simulateMouseClick.isChecked())
+		{
+			IKeyBinding.get(MC.options.keyAttack).simulatePress(true);
+			simulatingMouseClick = true;
+		}else
+		{
+			MC.gameMode.attack(player, target);
+			swingHand.swing(InteractionHand.MAIN_HAND);
+		}
 		
 		speed.resetTimer(speedRandMS.getValue());
 	}
@@ -226,46 +169,4 @@ public final class MaceHack extends Hack
 		
 		return entityFilters.testOne(entity);
 	}
-	
-	private int searchForMace()
-	{
-		int first = -1;
-		int second = -1;
-		
-		for(int i = 0; i < 40; i++)
-		{
-			ItemStack stack = MC.player.getInventory().getItem(i);
-			
-			if(isMace(stack))
-			{
-				if(first == -1)
-					first = i;
-				else
-				{
-					second = i;
-					break;
-				}
-			}
-		}
-		
-		if(!breachSwap.isChecked())
-			return first;
-		
-		return second != -1 ? second : first;
-	}
-	
-	private boolean isMace(ItemStack stack)
-	{
-		return stack.is(Items.MACE);
-	}
-	
-	@Override
-	public String getRenderName()
-	{
-		if(breachSwap.isChecked())
-			return getName() + " [Breach]";
-		else
-			return getName() + " [Normal]";
-	}
-	
 }
